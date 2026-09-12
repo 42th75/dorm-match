@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기숙사 룸메이트 배정</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1 id="siteTitle">기숙사 룸메이트 배정</h1>
+    <span class="sub" id="siteSub"></span>
+    <div class="who">
+      <span class="role" id="roleTag">학생</span>
+      <button class="btn ghost" id="authBtn" style="padding:6px 13px">관리자 로그인</button>
+    </div>
+  </div>
+  <nav>
+    <button data-tab="me" aria-current="page">내 배정 확인</button>
+    <button data-tab="all">전체 방 목록</button>
+    <button data-tab="survey" data-admin>응답 불러오기</button>
+    <button data-tab="run" data-admin>배정 실행</button>
+    <button data-tab="how">배정 방식</button>
+  </nav>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <!-- 내 배정 -->
+  <section class="tab on" id="tab-me">
+    <div class="sect">
+      <h2>학번으로 확인하기</h2>
+      <div class="row">
+        <label class="f"><span>학번</span>
+          <input id="myId" inputmode="numeric" placeholder="예: 2401" style="width:150px"></label>
+        <button class="btn" id="lookup">확인</button>
+      </div>
+      <div id="myResult"></div>
+    </div>
+  </section>
+
+  <!-- 전체 방 -->
+  <section class="tab" id="tab-all">
+    <div class="sect">
+      <h2>배정 결과</h2>
+      <div class="kpis" id="pubStats" style="margin-bottom:16px"></div>
+      <div class="rooms" id="roomGrid"></div>
+    </div>
+  </section>
+
+  <!-- 응답 (관리자) -->
+  <section class="tab" id="tab-survey">
+    <div class="sect">
+      <h2>구글 폼 응답 붙여넣기</h2>
+      <p class="muted">구글 폼 → 응답 → 스프레드시트에서 보기 → 전체 선택(Ctrl+A) → 복사(Ctrl+C) →
+        아래 칸에 붙여넣기(Ctrl+V). 또는 내려받은 CSV 파일의 내용을 그대로 붙여넣어도 된다.</p>
+      <textarea id="csv" placeholder="여기에 붙여넣는다"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="readCsv">읽어들이기</button>
+        <button class="btn ghost" id="sampleCsv">예시 응답 넣어 보기</button>
+        <button class="btn ghost danger" id="clearCsv">응답 지우기</button>
+      </div>
+      <div id="csvMsg"></div>
+    </div>
+    <div class="sect hidden" id="mapSect">
+      <h2>열 맞추기</h2>
+      <p class="muted">질문 문장을 보고 자동으로 맞췄다. 틀린 게 있으면 직접 고른다.</p>
+      <div class="scroll"><table id="mapTable"></table></div>
+      <div class="row" style="margin-top:10px"><button class="btn ghost" id="remap">이 설정으로 다시 읽기</button></div>
+    </div>
+    <div class="sect hidden" id="distSect">
+      <h2>문항별 응답 분포</h2>
+      <p class="muted">모두 같은 답을 고른 문항은 배정에 아무 도움이 되지 않는다. 다음에 설문을 고칠 때 참고한다.</p>
+      <div id="dist"></div>
+    </div>
+  </section>
+
+  <!-- 배정 (관리자) -->
+  <section class="tab" id="tab-run">
+    <div class="sect">
+      <h2>미리 정해 둘 방 (선택)</h2>
+      <p class="muted">사정이 있어 반드시 같은 방이어야 하는 학생이 있으면 학번 두 개를 한 줄에 적는다.
+        여기 적은 쌍은 계산에서 빼고 그대로 둔다.</p>
+      <textarea id="locked" style="min-height:70px" placeholder="2401 2402
+2415 2430"></textarea>
+    </div>
+    <div class="sect">
+      <div class="row"><button class="btn" id="doRun">배정 계산하기</button>
+        <span class="muted" id="runInfo"></span></div>
+      <div id="modeBox"></div>
+    </div>
+    <div class="sect hidden" id="pubSect">
+      <h2>결과 공개하기</h2>
+      <ol class="steps">
+        <li><b>결과 파일 만들기</b>를 눌러 <code>result.json</code> 을 내려받는다.</li>
+        <li>저장소의 <code>data/result.json</code> 을 그 파일로 바꾼다.</li>
+        <li>VS Code에서 커밋하고 푸시하면 1~2분 뒤 학생들이 볼 수 있다.</li>
+      </ol>
+      <div class="row"><button class="btn" id="publish">결과 파일 만들기</button></div>
+      <p class="note">이 파일에는 방 목록과 짧은 근거만 들어간다. 기피 학번과 설문 원본은 절대 들어가지 않는다.</p>
+      <div id="pubMsg"></div>
+    </div>
+  </section>
+
+  <!-- 설명 -->
+  <section class="tab" id="tab-how">
+    <div class="doc" id="howDoc"></div>
+  </section>
+</main>
+
+<dialog id="loginDlg">
+  <h3>관리자 로그인</h3>
+  <p>응답을 불러오거나 배정을 실행하려면 로그인한다.</p>
+  <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password">
+  <p class="err hidden" id="pwErr">비밀번호가 다르다.</p>
+  <div class="row">
+    <button class="btn" id="pwOk">로그인</button>
+    <button class="btn ghost" id="pwCancel">취소</button>
+  </div>
+</dialog>
+
+<script src="js/config.js"></script>
+<script src="js/matcher.js"></script>
+<script src="js/csv.js"></script>
+<script src="js/doc.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

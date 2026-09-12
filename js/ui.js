@@ -4,8 +4,6 @@ const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 let SOLVE = null;        // 마지막 계산 결과
-let PICK  = "stable";    // 고른 방식
-let DEMO  = null;        // 예시 결과 (공개 파일이 없을 때)
 
 /* ── 권한 ── */
 function applyRole(){
@@ -27,27 +25,24 @@ function go(name){
 $$("nav button").forEach(b=>b.onclick=()=>go(b.dataset.tab));
 
 /* ── 공개된 결과 ── */
-const pubData = ()=> Store.published || DEMO;
+const pubData = ()=> Store.published;
 
 function renderBanner(){
   const b = $("#banner"); b.innerHTML = "";
   const add = (html, cls)=>{ const d=document.createElement("div");
     d.className="banner"+(cls?" "+cls:""); d.innerHTML=html; b.appendChild(d); };
-  if(!Store.published && DEMO)
-    add(`아직 결과가 공개되지 않았다. 지금 보이는 것은 <b>예시</b>다.`, "alert");
   if(Store.isAdmin && Store.survey.people.length)
     add(`불러온 응답 <b>${Store.survey.people.length}명</b>. 이 자료는 이 브라우저에만 있고 저장소에 올라가지 않는다.`);
 }
 
 function renderPublic(){
   const d = pubData();
-  if(!d){ $("#roomGrid").innerHTML = `<p class="muted">아직 공개된 결과가 없다.</p>`; $("#pubStats").innerHTML=""; return; }
+  if(!d){ $("#roomGrid").innerHTML = `<p class="muted">아직 배정 결과가 공개되지 않았다.</p>`; $("#pubStats").innerHTML=""; return; }
   const s = d.stats || {};
   $("#pubStats").innerHTML = `
     <div><span>방</span><b>${s.rooms||d.rooms.length}</b></div>
     <div><span>학생</span><b>${s.students||""}</b></div>
-    <div><span>10순위 안에 배정</span><b>${s.top10Rate!=null?s.top10Rate+"%":"—"}</b></div>
-    <div><span>서로 바꾸고 싶은 쌍</span><b class="${s.blocking?"warn":"good"}">${s.blocking!=null?s.blocking:"—"}</b></div>`;
+    <div><span>10순위 안에 배정</span><b>${s.top10Rate!=null?s.top10Rate+"%":"—"}</b></div>`;
   $("#roomGrid").innerHTML = d.rooms.map(r=>`
     <div class="room"><div class="rno">${r.no}번 방</div>
       ${r.members.map(m=>`<div class="m">${esc(m.name)}<span>${esc(m.id)}</span></div>`).join("")}
@@ -59,7 +54,7 @@ function lookup(){
   const box = $("#myResult");
   const d = pubData();
   if(!id){ box.innerHTML = `<p class="err">학번을 입력한다.</p>`; return; }
-  if(!d){ box.innerHTML = `<p class="muted">아직 공개된 결과가 없다.</p>`; return; }
+  if(!d){ box.innerHTML = `<p class="muted">아직 배정 결과가 공개되지 않았다. 발표된 뒤에 다시 확인한다.</p>`; return; }
   const room = d.rooms.find(r=>r.members.some(m=>String(m.id)===id));
   if(!room){ box.innerHTML = `<p class="err">${esc(id)} 학번을 결과에서 찾지 못했다. 학번을 다시 확인하거나 담당 선생님께 문의한다.</p>`; return; }
   const me = room.members.find(m=>String(m.id)===id);
@@ -129,25 +124,11 @@ $("#remap").onclick = ()=>{
   $$("#mapTable select").forEach(s=>ov[s.dataset.k] = +s.value);
   readCsvNow(ov);
 };
-$("#sampleCsv").onclick = ()=>{
-  const ppl = makeSample(80, 777);
-  const head = ["타임스탬프","학번","이름","평일에 보통 몇 시에 잠드나요?","평일에 보통 몇 시에 일어나나요?",
-    "옆에서 나는 작은 소리나 불빛 때문에 잠을 설치나요?","책상이나 바닥에 물건이 며칠씩 쌓여 있는 편인가요?",
-    "잘 때 방 온도는 어느 쪽이 좋나요?","룸메이트를 정할 때 가장 중요한 것 하나를 고른다면?",
-    "같은 방이 되면 곤란한 학생이 있나요? (학번)"];
-  const sb=v=>({21.5:"22시 이전",22.5:"22–23시",23.5:"23–24시",24.5:"24–01시",25.5:"01–02시",26.5:"02시 이후"})[v];
-  const wb=v=>({5.7:"6시 이전",6.25:"6:00–6:30",6.75:"6:30–7:00",7.25:"7:00–7:30",7.7:"7:30 이후"})[v];
-  const pb=v=>({sleep:"취침·기상 시간",quiet:"방의 조용함",tidy:"정리 정돈",temp:"방 온도",none:"크게 상관없다"})[v];
-  const rows = ppl.map(p=>["2026/02/10 9:00",p.id,p.name,sb(p.sleep),wb(p.wake),p.sens,p.tidy,p.temp,pb(p.prio),(p.avoid||[]).join(" ")]);
-  $("#csv").value = [head,...rows].map(r=>r.map(c=>{
-    const t=String(c); return /[",\n]/.test(t) ? '"'+t.replace(/"/g,'""')+'"' : t; }).join(",")).join("\n");
-  readCsvNow(null);
-};
 $("#clearCsv").onclick = ()=>{
   if(!confirm("불러온 응답을 지운다.")) return;
   Store.clearSurvey(); $("#csv").value=""; $("#csvMsg").innerHTML="";
   $("#mapSect").classList.add("hidden"); $("#distSect").classList.add("hidden");
-  SOLVE=null; $("#modeBox").innerHTML=""; $("#pubSect").classList.add("hidden"); renderBanner();
+  SOLVE=null; $("#runOut").innerHTML=""; $("#pubSect").classList.add("hidden"); renderBanner();
 };
 
 /* ── 배정 실행 ── */
@@ -163,55 +144,43 @@ $("#doRun").onclick = ()=>{
   $("#runInfo").textContent = "계산 중…";
   setTimeout(()=>{
     const t = Date.now();
-    SOLVE = solveAll(people, {locked});
+    SOLVE = solve(people, {locked});
+    if(!SOLVE.ok){ $("#runInfo").innerHTML = `<span class="err">${esc(SOLVE.reason)}</span>`; return; }
     $("#runInfo").textContent = `${people.length}명 · ${Date.now()-t}ms`;
-    renderModes();
+    renderRun();
     $("#pubSect").classList.remove("hidden");
   }, 20);
 };
 
-function renderModes(){
-  const R = SOLVE.results;
-  const st = R.stable;
-  const head = st.exact
-    ? `<div class="banner"><b>안정 배정을 찾았다.</b> 서로 방을 바꾸고 싶어하는 쌍이 하나도 없다.</div>`
-    : `<div class="banner alert"><div><b>안정 배정이 존재하지 않는다.</b>
-        ${esc(st.note)} 대신 그런 쌍이 가장 적은 배정을 찾았다. 이건 프로그램의 한계가 아니라
-        이 문제 자체의 성질이다. 자세한 내용은 '배정 방식' 탭에 있다.</div></div>`;
-  const card = (key, label, desc)=>{
-    const r = R[key]; if(!r) return "";
-    const s = r.stats;
-    return `<button class="mode" data-m="${key}" aria-pressed="${PICK===key}">
-      <h4>${label}</h4><p>${desc}</p>
-      <dl>
-        <dt>바꾸고 싶은 쌍</dt><dd class="${s.blocking?"warn":"good"}">${s.blocking}</dd>
-        <dt>평균 순위</dt><dd>${s.avgRank.toFixed(1)}</dd>
-        <dt>가장 불운한 학생</dt><dd class="${s.worstRank>30?"warn":""}">${s.worstRank}위</dd>
-        <dt>10순위 안</dt><dd>${(s.top10Rate*100).toFixed(0)}%</dd>
-      </dl></button>`;
-  };
-  $("#modeBox").innerHTML = head + `<div class="modes">` +
-    MODES.map(m=>card(m.key, m.label, m.desc)).join("") + `</div>
-    <p class="note">'평균 순위 3.8'은 학생들이 평균적으로 자기와 가장 잘 맞는 3~4번째 상대와 같은 방이 됐다는 뜻이다.
-    '가장 불운한 학생'이 크면 전체 평균이 좋아도 누군가 한 명은 많이 참아야 한다는 뜻이니 같이 본다.</p>
-    <div id="picked"></div>`;
-  $$(".mode").forEach(b=>b.onclick=()=>{ PICK = b.dataset.m; Store.setMode(PICK); renderModes(); });
-  renderPicked();
-}
-function renderPicked(){
-  const r = SOLVE.results[PICK]; if(!r) return;
-  const all = SOLVE.all;
-  $("#picked").innerHTML = `<h3 style="margin-top:22px">배정 미리보기</h3>
-    <div class="rooms">${r.rooms.map((room,k)=>`
+function renderRun(){
+  const s = SOLVE.stats, all = SOLVE.all;
+  const notes = [];
+  if(SOLVE.fixedCount) notes.push(`미리 정해 둔 방 ${SOLVE.fixedCount}개는 그대로 뒀다.`);
+  if(SOLVE.hasLeftover) notes.push(`인원이 홀수라 한 방을 3인실로 만들었다.`);
+  $("#runOut").innerHTML = `
+    <div class="kpis" style="margin-bottom:14px">
+      <div><span>방</span><b>${SOLVE.rooms.length}</b></div>
+      <div><span>평균 순위</span><b>${s.avgRank.toFixed(1)}</b></div>
+      <div><span>10순위 안</span><b>${(s.top10Rate*100).toFixed(0)}%</b></div>
+      <div><span>생활차이 큰 학생</span><b class="${s.hard>s.matched*0.1?"warn":"good"}">${s.hard}명</b></div>
+      <div><span>아주 큰 학생</span><b class="${s.vhard?"bad":"good"}">${s.vhard}명</b></div>
+    </div>
+    ${notes.length?`<p class="note">${notes.join(" ")}</p>`:""}
+    <p class="note">'평균 순위 ${s.avgRank.toFixed(1)}'은 학생들이 평균적으로 자기와
+      ${Math.round(s.avgRank)}번째로 잘 맞는 상대와 같은 방이 됐다는 뜻이다.
+      '생활차이 큰 학생'은 생활 시간이나 습관이 꽤 어긋난 학생 수이고, 이 수를 줄이는 것이
+      배정의 목표다. 참고로 이번 응답에서는 서로 방을 바꾸고 싶어할 수 있는 쌍이
+      ${s.blocking}개 있다.</p>
+    <h3 style="margin-top:22px">배정 미리보기</h3>
+    <div class="rooms">${SOLVE.rooms.map((room,k)=>`
       <div class="room"><div class="rno">${k+1}번 방</div>
         ${room.map(i=>`<div class="m">${esc(all[i].name)}<span>${esc(all[i].id)}</span></div>`).join("")}
       </div>`).join("")}</div>`;
 }
 
 $("#publish").onclick = ()=>{
-  if(!SOLVE){ return; }
-  const r = SOLVE.results[PICK];
-  const obj = Store.buildResult(r.rooms, SOLVE.all, r.stats, PICK, SOLVE.P);
+  if(!SOLVE || !SOLVE.ok) return;
+  const obj = Store.buildResult(SOLVE.rooms, SOLVE.all, SOLVE.stats, SOLVE.P);
   Store.download(obj, "result.json");
   $("#pubMsg").innerHTML = `<div class="banner" style="margin-top:12px">
     <b>result.json</b> 을 내려받았다. 저장소의 <code>data/result.json</code> 을 이 파일로 바꾸고 커밋하면 공개된다.</div>`;
@@ -241,15 +210,7 @@ $("#pw").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#pwOk").click()
   document.title = CONFIG.title;
   $("#siteTitle").textContent = CONFIG.title;
   $("#siteSub").textContent = CONFIG.subtitle || "";
-  $("#howDoc").innerHTML = HOW_DOC;
   await Store.init();
-  if(!Store.published && CONFIG.demoWhenEmpty){
-    const ppl = makeSample(40, 321);
-    const s = solveAll(ppl, {});
-    const r = s.results.stable;
-    DEMO = Store.buildResult(r.rooms, s.all, r.stats, "stable", s.P);
-    DEMO.demo = true;
-  }
   applyRole(); renderBanner(); renderPublic();
   if(Store.isAdmin && Store.survey.raw){ $("#csv").value = Store.survey.raw; }
 })();

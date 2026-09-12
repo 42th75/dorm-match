@@ -15,9 +15,9 @@ const FIELDS = {
   id:    {label:"학번", keys:["학번","학번을","번호","id"]},
   name:  {label:"이름", keys:["이름","성명","name"]},
   sleep: {label:"취침 시각", keys:["잠드","취침","몇 시에 잠"], type:"bucket",
-          buckets:[["22시 이전",21.5],["22",22.5],["23",23.5],["24",24.5],["01",25.5],["02시 이후",26.5]]},
+          buckets:[["24시 이전",23.7],["24:00",24.25],["00:30",24.75],["01:00",25.25],["01:30",25.75],["02시 이후",26.4]]},
   wake:  {label:"기상 시각", keys:["일어","기상"], type:"bucket",
-          buckets:[["6시 이전",5.7],["6:00",6.25],["6:30",6.75],["7:00",7.25],["7:30",7.7]]},
+          buckets:[["7시 이전",6.8],["7:00",7.17],["7:20",7.5],["7:40",7.83],["8시 이후",8.2]]},
   sens:  {label:"소리·불빛 민감도", keys:["설치","민감","작은 소리","깨"], type:"scale"},
   tidy:  {label:"정리 정돈", keys:["쌓여","정리","치운"], type:"scale"},
   temp:  {label:"실내 온도", keys:["온도","서늘","따뜻"], type:"scale"},
@@ -48,8 +48,8 @@ function habitCost(a, b){
   const z = (a.sens - 1)/(SCALE_MAX - 1);                  // 0 ~ 1
   const amp = (a.prio === "quiet") ? (0.5 + 1.0*z) : (0.5 + 0.7*z);
   let c = 0;
-  c += w.sleep * Math.min(1, Math.abs(a.sleep - b.sleep)/2.5) * amp;
-  c += w.wake  * Math.min(1, Math.abs(a.wake  - b.wake )/1.5) * amp;
+  c += w.sleep * Math.min(1, Math.abs(a.sleep - b.sleep)/1.5) * amp;
+  c += w.wake  * Math.min(1, Math.abs(a.wake  - b.wake )/0.8) * amp;
   c += w.tidy  * Math.abs(a.tidy - b.tidy)/(SCALE_MAX-1);
   c += w.temp  * Math.abs(a.temp - b.temp)/(SCALE_MAX-1);
   return c;
@@ -198,9 +198,10 @@ function localSearch(n, cost, banned, rankOf, objective, starts){
 }
 
 /* ── 지표 ────────────────────────────────────────────────── */
+const HARD = 0.18, VERY_HARD = 0.30;   // 개인 생활차이가 이보다 크면 꽤 / 많이 안 맞는다고 본다
 function metrics(match, rankOf, cost){
   const n = rankOf.length;
-  let sumRank=0, worst=0, first=0, sumCost=0, maxCost=0, cnt=0;
+  let sumRank=0, worst=0, first=0, sumCost=0, maxCost=0, cnt=0, hard=0, vhard=0;
   const ranks=[];
   for(let i=0;i<n;i++){
     if(match[i]===-1) continue;
@@ -210,32 +211,42 @@ function metrics(match, rankOf, cost){
     if(r===1) first++;
     const c = cost[i][match[i]];
     sumCost+=c; maxCost=Math.max(maxCost,c);
+    if(c > HARD) hard++;
+    if(c > VERY_HARD) vhard++;
   }
   ranks.sort((a,b)=>a-b);
   return {
     blocking: blockingPairs(match, rankOf).length,
     avgRank: cnt?sumRank/cnt:0, medRank: ranks.length?ranks[Math.floor(ranks.length/2)]:0,
     worstRank: worst, top10Rate: cnt?ranks.filter(r=>r<=10).length/cnt:0,
-    firstRate: cnt?first/cnt:0, avgCost: cnt?sumCost/cnt:0, maxCost, matched:cnt
+    firstRate: cnt?first/cnt:0, avgCost: cnt?sumCost/cnt:0, maxCost, matched:cnt, hard, vhard
   };
 }
 
-/* ── 세 가지 목표로 각각 배정한다 ───────────────────────── */
-const MODES = [
-  {key:"stable",  label:"안정 우선",   desc:"서로 바꾸고 싶어하는 쌍이 생기지 않게 한다"},
-  {key:"fair",    label:"공평 우선",   desc:"가장 불운한 학생의 순위를 끌어올린다"},
-  {key:"total",   label:"총만족 우선", desc:"전체 생활비용의 합을 가장 낮춘다"}
-];
+/* ── 배정 ─────────────────────────────────────────────────────
+   목표 : 전체 생활차이의 합을 줄이되, 가장 힘든 학생 한 명을 특히 강하게 보정한다.
+          합만 줄이면 평균은 좋아도 한 명이 크게 참아야 하는 배정이 나온다.
 
-function solveAll(people, opts){
+          점수 = 전체 생활차이 합 + WORST_W × 인원 × (가장 큰 개인 생활차이)
+
+   왜 안정 배정(Irving)을 최종안으로 쓰지 않는가
+     차단 쌍(서로 지금 룸메보다 상대를 더 좋아하는 쌍)을 0으로 만드는 배정은
+     반대로 한 학생을 아주 나쁜 상대와 묶는 일이 잦았다. 80명 24회 실측에서
+     생활차이가 큰 학생이 안정 우선 7.8명 / 아주 큰 학생 2.7명이었던 반면,
+     이 방식은 3.5명 / 0.0명이었다. 차단 쌍은 서로의 설문 응답을 알아야 성립하는
+     이론적 지표라 실제 민원으로 이어지지 않는다. 그래서 실제 불편을 줄이는 쪽을 골랐다.
+     다만 Irving 은 그대로 쓴다. 좋은 출발점을 주고, 안정 배정이 존재하는지도 알려 준다.
+   ────────────────────────────────────────────────────────── */
+const WORST_W = 1.5;
+
+function solve(people, opts){
   opts = opts || {};
   const rnd = opts.rnd || Math.random;
-  const locked = opts.locked || [];          // [[학번, 학번], ...] 관리자가 미리 붙인 쌍
-  const all = people;
-  const N = all.length;
+  const locked = opts.locked || [];
+  const all = people, N = all.length;
 
-  // 고정 쌍과 홀수 인원을 빼고 나머지로 계산한다
-  const byId = {}; all.forEach((p,i)=>byId[String(p.id)]=i);
+  // 미리 정해 둔 쌍과 홀수 인원을 빼고 계산한다
+  const byId = {}; all.forEach((p,i)=>byId[String(p.id)] = i);
   const fixed = [], usedIdx = new Set();
   for(const [x,y] of locked){
     const i = byId[String(x).trim()], j = byId[String(y).trim()];
@@ -244,63 +255,49 @@ function solveAll(people, opts){
   }
   let poolIdx = [...Array(N).keys()].filter(i=>!usedIdx.has(i));
   let leftover = -1;
-  if(poolIdx.length % 2 === 1){
-    leftover = poolIdx[poolIdx.length-1];     // 나중에 비용이 가장 적게 느는 방에 합류
-    poolIdx = poolIdx.slice(0,-1);
-  }
+  if(poolIdx.length % 2 === 1){ leftover = poolIdx[poolIdx.length-1]; poolIdx = poolIdx.slice(0,-1); }
 
   const sub = poolIdx.map(i=>all[i]);
   const P = buildPreferences(sub);
   const n = sub.length;
-  const gr = greedyMatch(n, P.cost, P.banned);
-  const rs = [gr]; for(let t=0;t<5;t++) rs.push(randomMatch(n, P.banned, rnd));
+  if(n < 2) return {ok:false, reason:"계산할 학생이 너무 적다"};
 
-  const costOf = m => { let s=0; for(let i=0;i<n;i++) if(m[i]>=0) s+=P.cost[i][m[i]]; return s; };
-  const worstOf = m => { let w=0; for(let i=0;i<n;i++) if(m[i]>=0) w=Math.max(w,P.rankOf[i][m[i]]); return w; };
+  const totalCost = m => { let s=0; for(let i=0;i<n;i++) if(m[i]>=0) s+=P.cost[i][m[i]]; return s; };
+  const worstCost = m => { let w=0; for(let i=0;i<n;i++) if(m[i]>=0) w=Math.max(w,P.cost[i][m[i]]); return w; };
 
-  const out = {};
-  // 안정 우선
+  // 출발점 여럿에서 국소 탐색을 돌린다. Irving 의 답도 출발점으로 넣는다.
   const irv = irving(P.prefs, P.rankOf);
-  if(irv.ok) out.stable = {match:irv.match, exact:true, note:"안정 배정을 찾았다"};
-  else {
-    const m = localSearch(n,P.cost,P.banned,P.rankOf,
-      mm=>blockingPairs(mm,P.rankOf).length*1000 + costOf(mm), rs);
-    out.stable = {match:m, exact:false, note:"안정 배정이 존재하지 않아 차단 쌍을 최소화했다: "+irv.reason};
+  const starts = [greedyMatch(n, P.cost, P.banned)];
+  if(irv.ok) starts.push(irv.match);
+  for(let t=0;t<4;t++) starts.push(randomMatch(n, P.banned, rnd));
+
+  const match = localSearch(n, P.cost, P.banned, P.rankOf,
+                            m => totalCost(m) + WORST_W * n * worstCost(m), starts);
+  if(!match) return {ok:false, reason:"조건을 모두 지키는 배정을 찾지 못했다"};
+
+  // 원래 번호로 되돌려 방을 만든다
+  const rooms = [], done = new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    if(done[i] || match[i]<0) continue;
+    done[i] = done[match[i]] = 1;
+    rooms.push([poolIdx[i], poolIdx[match[i]]]);
   }
-  // 공평 우선 : 최악 순위를 먼저 줄이고, 같으면 총비용으로 가른다
-  out.fair = {match: localSearch(n,P.cost,P.banned,P.rankOf,
-      mm=>worstOf(mm)*1000 + costOf(mm), rs.concat([out.stable.match])), exact:false};
-  // 총만족 우선
-  out.total = {match: localSearch(n,P.cost,P.banned,P.rankOf, costOf, rs), exact:false};
-  // 비교용
-  out.random = {match: randomMatch(n, P.banned, rnd), exact:false};
+  fixed.forEach(f=>rooms.unshift(f.slice()));
+  if(leftover >= 0){
+    const Pall = buildPreferences(all);
+    let best = 0, bv = Infinity;
+    rooms.forEach((r,k)=>{
+      if(r.some(x=>Pall.banned[leftover].has(x))) return;
+      const v = r.reduce((s,x)=>s + Pall.cost[leftover][x] + Pall.cost[x][leftover], 0);
+      if(v < bv){ bv = v; best = k; }
+    });
+    rooms[best] = rooms[best].concat(leftover);
+  }
 
-  const pack = key => {
-    const m = out[key].match;
-    if(!m) return null;
-    const rooms = [], done = new Uint8Array(n);
-    for(let i=0;i<n;i++){
-      if(done[i] || m[i]<0) continue;
-      done[i]=done[m[i]]=1;
-      rooms.push([poolIdx[i], poolIdx[m[i]]]);
-    }
-    fixed.forEach(f=>rooms.unshift(f.slice()));
-    if(leftover >= 0){
-      const Pall = buildPreferences(all);
-      let best=0, bv=Infinity;
-      rooms.forEach((r,k)=>{
-        if(r.some(x=>Pall.banned[leftover].has(x))) return;
-        const v = r.reduce((s,x)=>s+Pall.cost[leftover][x]+Pall.cost[x][leftover],0);
-        if(v<bv){ bv=v; best=k; }
-      });
-      rooms[best] = rooms[best].concat(leftover);
-    }
-    return {rooms, stats: metrics(m, P.rankOf, P.cost),
-            exact: out[key].exact, note: out[key].note || ""};
-  };
-
-  return {P, poolIdx, all, fixedCount: fixed.length, leftover,
-          results: {stable:pack("stable"), fair:pack("fair"), total:pack("total"), random:pack("random")}};
+  return {ok:true, rooms, P, all, poolIdx, match,
+          stableExists: irv.ok, stableNote: irv.ok ? "" : irv.reason,
+          fixedCount: fixed.length, hasLeftover: leftover >= 0,
+          stats: metrics(match, P.rankOf, P.cost)};
 }
 
 /* 받침 유무에 따라 조사를 고른다 */
@@ -314,14 +311,14 @@ function josa(word, withB, without){
 function explain(a, b, rank, total){
   const out = [];
   const near = [];
-  if(Math.abs(a.sleep-b.sleep) <= 0.6) near.push("잠드는 시간");
-  if(Math.abs(a.wake -b.wake ) <= 0.4) near.push("일어나는 시간");
+  if(Math.abs(a.sleep-b.sleep) <= 0.5) near.push("잠드는 시간");
+  if(Math.abs(a.wake -b.wake ) <= 0.34) near.push("일어나는 시간");
   if(Math.abs(a.tidy -b.tidy ) <= 1)   near.push("정리 습관");
   if(Math.abs(a.temp -b.temp ) <= 1)   near.push("선호 온도");
   if(near.length){ const t = near.join(", "); out.push(t + josa(t,"이","가") + " 비슷하다"); }
-  if(a.sens >= 4 && Math.abs(a.sleep-b.sleep) <= 0.6)
+  if(a.sens >= 4 && Math.abs(a.sleep-b.sleep) <= 0.5)
     out.push("잠귀가 밝은 편인데 생활 시간이 거의 같다");
-  if(a.prio === "sleep" && Math.abs(a.sleep-b.sleep) <= 1)
+  if(a.prio === "sleep" && Math.abs(a.sleep-b.sleep) <= 0.6)
     out.push("가장 중요하다고 답한 생활 시간이 잘 맞는다");
   if(a.prio === "tidy" && Math.abs(a.tidy-b.tidy) <= 1)
     out.push("가장 중요하다고 답한 정리 습관이 잘 맞는다");
@@ -330,37 +327,4 @@ function explain(a, b, rank, total){
   if(!out.length) out.push("남은 조합 중에서 생활 차이가 가장 작았다");
   out.push(`전체 ${total}명 가운데 ${rank}번째로 잘 맞는 상대다`);
   return out;
-}
-
-/* ── 예시 응답 ───────────────────────────────────────────── */
-function makeSample(n, seedIn){
-  let seed = seedIn || 20260912;
-  const rnd = ()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
-  const nrm = ()=>{ let s=0; for(let i=0;i<6;i++) s+=rnd(); return (s-3)/Math.sqrt(0.5); };
-  const SUR = "김이박최정강조윤장임한오서신권황안송전홍".split("");
-  const GIV = "민서 지우 하준 예윤 도현 시아 은채 수빈 태윤 라온 소율 준혁 가온 세림 다원 유찬 나경 지호 서윤 하율".split(" ");
-  const prios = ["sleep","sleep","quiet","tidy","temp","none"];
-  const people = [], used = new Set();
-  for(let i=0;i<n;i++){
-    let nm; do{ nm = SUR[Math.floor(rnd()*SUR.length)] + GIV[Math.floor(rnd()*GIV.length)]; }while(used.has(nm));
-    used.add(nm);
-    const owl = nrm();
-    const cl = (v)=>Math.max(1,Math.min(5,Math.round(v)));
-    people.push({
-      id: String(2400 + i + 1),
-      name: nm,
-      sleep: [21.5,22.5,23.5,24.5,25.5,26.5][Math.max(0,Math.min(5,Math.round(2.4+owl*1.1)))],
-      wake:  [5.7,6.25,6.75,7.25,7.7][Math.max(0,Math.min(4,Math.round(2+owl*0.8+nrm()*0.5)))],
-      sens:  cl(3+nrm()*1.2), tidy: cl(3+nrm()*1.2), temp: cl(3+nrm()*1.1),
-      prio:  prios[Math.floor(rnd()*prios.length)],
-      avoid: []
-    });
-  }
-  // 기피는 드물게 (학폭·다툼 같은 경우) — 전체의 3% 정도
-  const k = Math.max(1, Math.round(n*0.03));
-  for(let t=0;t<k;t++){
-    const i = Math.floor(rnd()*n); let j = Math.floor(rnd()*n);
-    if(i!==j) people[i].avoid = [people[j].id];
-  }
-  return people;
 }

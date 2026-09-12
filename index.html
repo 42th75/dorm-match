@@ -21,7 +21,6 @@
     <button data-tab="all">전체 방 목록</button>
     <button data-tab="survey" data-admin>응답 불러오기</button>
     <button data-tab="run" data-admin>배정 실행</button>
-    <button data-tab="how">배정 방식</button>
   </nav>
 </header>
 
@@ -59,7 +58,6 @@
       <textarea id="csv" placeholder="여기에 붙여넣는다"></textarea>
       <div class="row" style="margin-top:10px">
         <button class="btn" id="readCsv">읽어들이기</button>
-        <button class="btn ghost" id="sampleCsv">예시 응답 넣어 보기</button>
         <button class="btn ghost danger" id="clearCsv">응답 지우기</button>
       </div>
       <div id="csvMsg"></div>
@@ -89,7 +87,7 @@
     <div class="sect">
       <div class="row"><button class="btn" id="doRun">배정 계산하기</button>
         <span class="muted" id="runInfo"></span></div>
-      <div id="modeBox"></div>
+      <div id="runOut"></div>
     </div>
     <div class="sect hidden" id="pubSect">
       <h2>결과 공개하기</h2>
@@ -104,10 +102,6 @@
     </div>
   </section>
 
-  <!-- 설명 -->
-  <section class="tab" id="tab-how">
-    <div class="doc" id="howDoc"></div>
-  </section>
 </main>
 
 <dialog id="loginDlg">
@@ -124,7 +118,6 @@
 <script src="js/config.js"></script>
 <script src="js/matcher.js"></script>
 <script src="js/csv.js"></script>
-<script src="js/doc.js"></script>
 <script src="js/store.js"></script>
 <script src="js/ui.js"></script>
 </body>

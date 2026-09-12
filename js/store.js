@@ -12,8 +12,8 @@
 const Store = (()=>{
   const SURVEY_KEY = "dorm.survey.v1";     // 관리자 전용, 공개되지 않음
   const SESS_KEY   = "dorm.admin";
-  let published = null, isDemo = false;
-  let survey = {people:[], raw:"", map:null, locked:[], mode:"stable", updatedAt:""};
+  let published = null;
+  let survey = {people:[], raw:"", map:null, locked:[], updatedAt:""};
 
   const now = ()=> new Date().toISOString();
 
@@ -36,7 +36,6 @@ const Store = (()=>{
   return {
     get published(){ return published; },
     get survey(){ return survey; },
-    get isDemo(){ return isDemo; },
     get isAdmin(){ try{ return sessionStorage.getItem(SESS_KEY)==="1"; }catch(e){ return false; } },
     login(pw){ if(pw !== CONFIG.adminPassword) return false;
                try{ sessionStorage.setItem(SESS_KEY,"1"); }catch(e){} return true; },
@@ -44,7 +43,6 @@ const Store = (()=>{
 
     async init(){
       published = await fetchPublished();
-      if(!published && CONFIG.demoWhenEmpty){ isDemo = true; }
       loadSurvey();
       return this;
     },
@@ -53,20 +51,19 @@ const Store = (()=>{
       saveSurvey();
     },
     setLocked(list){ survey.locked = list; saveSurvey(); },
-    setMode(m){ survey.mode = m; saveSurvey(); },
-    clearSurvey(){ survey = {people:[], raw:"", map:null, locked:[], mode:"stable", updatedAt:""};
+    clearSurvey(){ survey = {people:[], raw:"", map:null, locked:[], updatedAt:""};
                    try{ localStorage.removeItem(SURVEY_KEY); }catch(e){} },
 
     /* 공개용 결과 파일을 만든다. 기피와 원본 응답은 넣지 않는다. */
-    buildResult(rooms, people, stats, mode, P){
+    buildResult(rooms, people, stats, P){
       const out = {
         version: (published && published.version || 0) + 1,
         updatedAt: now(),
         title: CONFIG.title, subtitle: CONFIG.subtitle,
-        mode, stats: {
+        stats: {
           rooms: rooms.length, students: rooms.reduce((s,r)=>s+r.length,0),
-          blocking: stats.blocking, avgRank: +stats.avgRank.toFixed(2),
-          worstRank: stats.worstRank, top10Rate: +(stats.top10Rate*100).toFixed(1)
+          avgRank: +stats.avgRank.toFixed(2), worstRank: stats.worstRank,
+          top10Rate: +(stats.top10Rate*100).toFixed(1), hard: stats.hard
         },
         rooms: rooms.map((r,k)=>({
           no: k+1,

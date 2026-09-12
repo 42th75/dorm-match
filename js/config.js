@@ -8,6 +8,5 @@
 const CONFIG = {
   title: "기숙사 룸메이트 배정",
   subtitle: "2026학년도 1학기",
-  adminPassword: "1234",
-  demoWhenEmpty: true          // 결과 파일이 없을 때 예시를 보여줄지
+  adminPassword: "1234"
 };

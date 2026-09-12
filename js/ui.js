@@ -156,7 +156,7 @@ function renderRun(){
   const s = SOLVE.stats, all = SOLVE.all;
   const notes = [];
   if(SOLVE.fixedCount) notes.push(`미리 정해 둔 방 ${SOLVE.fixedCount}개는 그대로 뒀다.`);
-  if(SOLVE.hasLeftover) notes.push(`인원이 홀수라 한 방을 3인실로 만들었다.`);
+  if(SOLVE.hasLeftover) notes.push(`인원이 홀수라 한 명은 혼자 쓰는 방이 되었다. 인원을 맞추거나 미리 정해 둘 방으로 조정한다.`);
   $("#runOut").innerHTML = `
     <div class="kpis" style="margin-bottom:14px">
       <div><span>방</span><b>${SOLVE.rooms.length}</b></div>

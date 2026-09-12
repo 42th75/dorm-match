@@ -115,7 +115,7 @@ function readSurvey(text, mapOverride){
     p.avoid = (p.avoid||[]).filter(v=>ids.has(v) && v !== p.id);
   });
   if(people.length && people.length % 2 === 1)
-    problems.push(`응답이 ${people.length}명으로 홀수다. 한 방은 3인실이 된다.`);
+    problems.push(`응답이 ${people.length}명으로 홀수다. 2인실만 있어 한 명은 혼자 쓰는 방이 된다.`);
   return {people, problems, header, map};
 }
 

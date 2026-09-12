@@ -197,26 +197,37 @@ function localSearch(n, cost, banned, rankOf, objective, starts){
   return best;
 }
 
-/* ── 지표 ────────────────────────────────────────────────── */
+/* ── 지표 ──────────────────────────────────────────────────
+   최종 방(잠금 쌍 포함)을 원래 학번 인덱스 기준 선호표로 훑는다.
+   2인실만 있으므로 룸메는 한 명이다. 인원이 홀수라 혼자 쓰는 방이 생기면
+   그 학생은 룸메가 없어 지표 계산에서 뺀다.                              */
 const HARD = 0.18, VERY_HARD = 0.30;   // 개인 생활차이가 이보다 크면 꽤 / 많이 안 맞는다고 본다
-function metrics(match, rankOf, cost){
-  const n = rankOf.length;
+function roomStats(rooms, P){
+  const rankOf = P.rankOf, cost = P.cost, N = rankOf.length;
   let sumRank=0, worst=0, first=0, sumCost=0, maxCost=0, cnt=0, hard=0, vhard=0;
   const ranks=[];
-  for(let i=0;i<n;i++){
-    if(match[i]===-1) continue;
-    cnt++;
-    const r = rankOf[i][match[i]]+1;
-    ranks.push(r); sumRank+=r; worst=Math.max(worst,r);
-    if(r===1) first++;
-    const c = cost[i][match[i]];
-    sumCost+=c; maxCost=Math.max(maxCost,c);
-    if(c > HARD) hard++;
-    if(c > VERY_HARD) vhard++;
+  for(const room of rooms){
+    for(const i of room){
+      const others = room.filter(x=>x!==i);
+      if(!others.length) continue;
+      cnt++;
+      let bestRank = Infinity, worstCost = 0;
+      for(const j of others){
+        const rr = (rankOf[i][j]!=null && rankOf[i][j] < 1e8) ? rankOf[i][j]+1 : null;
+        if(rr!=null && rr < bestRank) bestRank = rr;
+        if(cost[i][j] > worstCost) worstCost = cost[i][j];
+      }
+      const r = isFinite(bestRank) ? bestRank : N;   // 기피 등으로 순위가 없으면 최하위로 본다
+      ranks.push(r); sumRank+=r; worst=Math.max(worst,r);
+      if(r===1) first++;
+      sumCost+=worstCost; maxCost=Math.max(maxCost,worstCost);
+      if(worstCost > HARD) hard++;
+      if(worstCost > VERY_HARD) vhard++;
+    }
   }
   ranks.sort((a,b)=>a-b);
   return {
-    blocking: blockingPairs(match, rankOf).length,
+    blocking: 0,   // 호출한 쪽에서 채운다 (차단 쌍은 2인 안정성 지표라 따로 계산)
     avgRank: cnt?sumRank/cnt:0, medRank: ranks.length?ranks[Math.floor(ranks.length/2)]:0,
     worstRank: worst, top10Rate: cnt?ranks.filter(r=>r<=10).length/cnt:0,
     firstRate: cnt?first/cnt:0, avgCost: cnt?sumCost/cnt:0, maxCost, matched:cnt, hard, vhard
@@ -275,6 +286,10 @@ function solve(people, opts){
                             m => totalCost(m) + WORST_W * n * worstCost(m), starts);
   if(!match) return {ok:false, reason:"조건을 모두 지키는 배정을 찾지 못했다"};
 
+  // 전체 학생을 원래 번호 그대로 담은 선호표. 잠금 쌍까지 포함해
+  // 근거와 지표를 낼 때 이 표 하나만 본다. (계산용 P 는 풀 인덱스라 섞이면 안 된다)
+  const Pall = buildPreferences(all);
+
   // 원래 번호로 되돌려 방을 만든다
   const rooms = [], done = new Uint8Array(n);
   for(let i=0;i<n;i++){
@@ -283,21 +298,18 @@ function solve(people, opts){
     rooms.push([poolIdx[i], poolIdx[match[i]]]);
   }
   fixed.forEach(f=>rooms.unshift(f.slice()));
-  if(leftover >= 0){
-    const Pall = buildPreferences(all);
-    let best = 0, bv = Infinity;
-    rooms.forEach((r,k)=>{
-      if(r.some(x=>Pall.banned[leftover].has(x))) return;
-      const v = r.reduce((s,x)=>s + Pall.cost[leftover][x] + Pall.cost[x][leftover], 0);
-      if(v < bv){ bv = v; best = k; }
-    });
-    rooms[best] = rooms[best].concat(leftover);
-  }
+  // 2인실만 있으므로 3인실을 만들지 않는다. 인원이 홀수여서 남는 한 명은
+  // 혼자 쓰는 방으로 두고, 관리자가 인원을 맞추거나 미리 정해 둘 방으로 조정한다.
+  if(leftover >= 0) rooms.push([leftover]);
 
-  return {ok:true, rooms, P, all, poolIdx, match,
+  // 최종 방 기준 지표(잠금 쌍 포함, 혼자 쓰는 방은 룸메가 없어 제외).
+  // 차단 쌍만 2인 안정성 지표라 따로 센다.
+  const stats = roomStats(rooms, Pall);
+  stats.blocking = blockingPairs(match, P.rankOf).length;
+
+  return {ok:true, rooms, P: Pall, all, poolIdx, match,
           stableExists: irv.ok, stableNote: irv.ok ? "" : irv.reason,
-          fixedCount: fixed.length, hasLeftover: leftover >= 0,
-          stats: metrics(match, P.rankOf, P.cost)};
+          fixedCount: fixed.length, hasLeftover: leftover >= 0, stats};
 }
 
 /* 받침 유무에 따라 조사를 고른다 */
@@ -316,14 +328,9 @@ function explain(a, b, rank, total){
   if(Math.abs(a.tidy -b.tidy ) <= 1)   near.push("정리 습관");
   if(Math.abs(a.temp -b.temp ) <= 1)   near.push("선호 온도");
   if(near.length){ const t = near.join(", "); out.push(t + josa(t,"이","가") + " 비슷하다"); }
-  if(a.sens >= 4 && Math.abs(a.sleep-b.sleep) <= 0.5)
-    out.push("잠귀가 밝은 편인데 생활 시간이 거의 같다");
-  if(a.prio === "sleep" && Math.abs(a.sleep-b.sleep) <= 0.6)
-    out.push("가장 중요하다고 답한 생활 시간이 잘 맞는다");
-  if(a.prio === "tidy" && Math.abs(a.tidy-b.tidy) <= 1)
-    out.push("가장 중요하다고 답한 정리 습관이 잘 맞는다");
-  if(a.prio === "temp" && Math.abs(a.temp-b.temp) <= 1)
-    out.push("가장 중요하다고 답한 온도 취향이 잘 맞는다");
+  // 근거 문구는 두 사람이 '서로 비슷하다'는 쌍 정보만 담는다. 민감도·우선항목처럼
+  // 개인이 혼자 적은 응답은, 문구가 나타나는 것만으로도 값이 드러나므로 넣지 않는다.
+  if(near.length >= 3) out.push("여러 생활 습관이 고루 잘 맞는 편이다");
   if(!out.length) out.push("남은 조합 중에서 생활 차이가 가장 작았다");
   out.push(`전체 ${total}명 가운데 ${rank}번째로 잘 맞는 상대다`);
   return out;

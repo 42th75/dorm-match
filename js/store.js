@@ -69,9 +69,12 @@ const Store = (()=>{
           no: k+1,
           members: r.map(i=>({id: people[i].id, name: people[i].name})),
           reasons: r.map(i=>{
-            const other = r.filter(x=>x!==i);
-            const j = other[0];
-            const rank = P.rankOf[i] ? (P.rankOf[i][j]!=null && P.rankOf[i][j]<1e8 ? P.rankOf[i][j]+1 : null) : null;
+            const others = r.filter(x=>x!==i);
+            if(!others.length)   // 인원이 홀수라 혼자 쓰는 방
+              return {id: people[i].id, lines: ["인원이 홀수라 아직 룸메이트가 정해지지 않았다 (혼자 쓰는 방)"]};
+            const j = others[0];
+            const rank = (P.rankOf[i] && P.rankOf[i][j]!=null && P.rankOf[i][j]<1e8)
+                       ? P.rankOf[i][j]+1 : null;
             return {id: people[i].id,
                     lines: explain(people[i], people[j], rank || "-", people.length-1)};
           })

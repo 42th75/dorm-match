@@ -132,22 +132,17 @@ $("#clearCsv").onclick = ()=>{
 };
 
 /* ── 배정 실행 ── */
-function parseLocked(){
-  return $("#locked").value.split(/\n+/).map(l=>l.trim()).filter(Boolean)
-    .map(l=>l.split(/[\s,]+/).filter(Boolean)).filter(a=>a.length>=2).map(a=>[a[0],a[1]]);
-}
 $("#doRun").onclick = ()=>{
   const people = Store.survey.people;
   if(people.length < 4){ $("#runInfo").innerHTML = `<span class="err">응답이 너무 적다. 먼저 응답을 불러온다.</span>`; return; }
-  const locked = parseLocked();
-  Store.setLocked(locked);
   $("#runInfo").textContent = "계산 중…";
   setTimeout(()=>{
     const t = Date.now();
-    SOLVE = solve(people, {locked});
+    SOLVE = solve(people);
     if(!SOLVE.ok){ $("#runInfo").innerHTML = `<span class="err">${esc(SOLVE.reason)}</span>`; return; }
     $("#runInfo").textContent = `${people.length}명 · ${Date.now()-t}ms`;
     renderRun();
+    $("#ghToken").value = Store.ghToken || "";   // 저장된 토큰이 있으면 미리 채운다
     $("#pubSect").classList.remove("hidden");
   }, 20);
 };
@@ -155,8 +150,7 @@ $("#doRun").onclick = ()=>{
 function renderRun(){
   const s = SOLVE.stats, all = SOLVE.all;
   const notes = [];
-  if(SOLVE.fixedCount) notes.push(`미리 정해 둔 방 ${SOLVE.fixedCount}개는 그대로 뒀다.`);
-  if(SOLVE.hasLeftover) notes.push(`인원이 홀수라 한 명은 혼자 쓰는 방이 되었다. 인원을 맞추거나 미리 정해 둘 방으로 조정한다.`);
+  if(SOLVE.hasLeftover) notes.push(`인원이 홀수라 한 명은 혼자 쓰는 방이 되었다. 응답 인원을 짝수로 맞춰 다시 계산한다.`);
   $("#runOut").innerHTML = `
     <div class="kpis" style="margin-bottom:14px">
       <div><span>방</span><b>${SOLVE.rooms.length}</b></div>
@@ -178,7 +172,25 @@ function renderRun(){
       </div>`).join("")}</div>`;
 }
 
-$("#publish").onclick = ()=>{
+$("#publish").onclick = async ()=>{
+  if(!SOLVE || !SOLVE.ok) return;
+  const tok = $("#ghToken").value.trim();
+  if(tok) Store.setGhToken(tok);            // 입력한 토큰을 이 브라우저에 저장
+  const obj = Store.buildResult(SOLVE.rooms, SOLVE.all, SOLVE.stats, SOLVE.P);
+  const btn = $("#publish"), label = btn.textContent;
+  btn.disabled = true; btn.textContent = "올리는 중…"; $("#pubMsg").innerHTML = "";
+  try{
+    await Store.publish(obj);
+    $("#pubMsg").innerHTML = `<div class="banner" style="margin-top:12px">
+      깃허브에 <b>공개(v${obj.version})</b> 했다. 1~2분 뒤 학생들이 자기 학번으로 결과를 볼 수 있다.</div>`;
+  }catch(e){
+    $("#pubMsg").innerHTML = `<div class="banner alert" style="margin-top:12px"><div>
+      올리지 못했다: ${esc(e.message)}<br>
+      토큰이 맞는지, 이 저장소에 쓰기 권한이 있는지 확인한다. 급하면 아래 <b>파일로 내려받기</b> 로도 할 수 있다.
+      </div></div>`;
+  }finally{ btn.disabled = false; btn.textContent = label; }
+};
+$("#publishFile").onclick = ()=>{
   if(!SOLVE || !SOLVE.ok) return;
   const obj = Store.buildResult(SOLVE.rooms, SOLVE.all, SOLVE.stats, SOLVE.P);
   Store.download(obj, "result.json");
@@ -200,8 +212,6 @@ $("#pwOk").onclick = ()=>{
   if(!Store.login($("#pw").value)){ $("#pwErr").classList.remove("hidden"); return; }
   closeDlg(); applyRole(); renderBanner();
   if(Store.survey.raw){ $("#csv").value = Store.survey.raw; readCsvNow(Store.survey.map); }
-  if(Store.survey.locked && Store.survey.locked.length)
-    $("#locked").value = Store.survey.locked.map(p=>p.join(" ")).join("\n");
 };
 $("#pw").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#pwOk").click(); });
 

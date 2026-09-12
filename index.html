@@ -78,26 +78,24 @@
   <!-- 배정 (관리자) -->
   <section class="tab" id="tab-run">
     <div class="sect">
-      <h2>미리 정해 둘 방 (선택)</h2>
-      <p class="muted">사정이 있어 반드시 같은 방이어야 하는 학생이 있으면 학번 두 개를 한 줄에 적는다.
-        여기 적은 쌍은 계산에서 빼고 그대로 둔다.</p>
-      <textarea id="locked" style="min-height:70px" placeholder="2401 2402
-2415 2430"></textarea>
-    </div>
-    <div class="sect">
       <div class="row"><button class="btn" id="doRun">배정 계산하기</button>
         <span class="muted" id="runInfo"></span></div>
       <div id="runOut"></div>
     </div>
     <div class="sect hidden" id="pubSect">
       <h2>결과 공개하기</h2>
-      <ol class="steps">
-        <li><b>결과 파일 만들기</b>를 눌러 <code>result.json</code> 을 내려받는다.</li>
-        <li>저장소의 <code>data/result.json</code> 을 그 파일로 바꾼다.</li>
-        <li>VS Code에서 커밋하고 푸시하면 1~2분 뒤 학생들이 볼 수 있다.</li>
-      </ol>
-      <div class="row"><button class="btn" id="publish">결과 파일 만들기</button></div>
-      <p class="note">이 파일에는 방 목록과 짧은 근거만 들어간다. 기피 학번과 설문 원본은 절대 들어가지 않는다.</p>
+      <p class="muted">아래 버튼을 누르면 <code>data/result.json</code> 이 깃허브에 바로 올라가고,
+        1~2분 뒤 학생들이 볼 수 있다. 파일을 직접 옮기거나 따로 커밋할 필요가 없다.</p>
+      <div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <label class="f"><span>깃허브 토큰 (한 번만 넣으면 이 브라우저에 저장된다)</span>
+          <input type="password" id="ghToken" placeholder="github_pat_… 또는 ghp_…" autocomplete="off" style="width:280px"></label>
+        <button class="btn" id="publish">깃허브에 바로 공개</button>
+      </div>
+      <p class="note">토큰은 비밀번호와 같다. 이 브라우저에만 저장되고 저장소에는 올라가지 않는다.
+        다른 곳에서 쓰는 토큰을 재사용하지 말고, 이 저장소에만 쓸 수 있는 토큰을 만든다.
+        만드는 법은 <code>START.md</code> 7단계를 본다.</p>
+      <div class="row" style="margin-top:6px"><button class="btn ghost" id="publishFile">대신 파일로 내려받기</button></div>
+      <p class="note">이 결과에는 방 목록과 짧은 근거만 들어간다. 기피 학번과 설문 원본은 절대 들어가지 않는다.</p>
       <div id="pubMsg"></div>
     </div>
   </section>

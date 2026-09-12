@@ -8,5 +8,8 @@
 const CONFIG = {
   title: "기숙사 룸메이트 배정",
   subtitle: "2026학년도 2학기",
-  adminPassword: "1234"
+  adminPassword: "1234",
+
+  // 결과를 '깃허브에 바로 공개' 할 저장소. 토큰은 여기 적지 않는다(비밀).
+  github: { owner: "42th75", repo: "dorm-match", branch: "main", path: "data/result.json" }
 };

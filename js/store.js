@@ -12,10 +12,19 @@
 const Store = (()=>{
   const SURVEY_KEY = "dorm.survey.v1";     // 관리자 전용, 공개되지 않음
   const SESS_KEY   = "dorm.admin";
+  const GH_KEY     = "dorm.ghtoken";        // 깃허브 토큰. 관리자 브라우저에만 저장된다
   let published = null;
-  let survey = {people:[], raw:"", map:null, locked:[], updatedAt:""};
+  let survey = {people:[], raw:"", map:null, updatedAt:""};
 
   const now = ()=> new Date().toISOString();
+
+  // UTF-8 문자열을 base64 로 (한글 이름 안전). 큰 파일도 나눠서 처리한다.
+  function toB64Utf8(str){
+    const bytes = new TextEncoder().encode(str);
+    let bin = ""; const CH = 0x8000;
+    for(let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+    return btoa(bin);
+  }
 
   async function fetchPublished(){
     try{
@@ -41,6 +50,37 @@ const Store = (()=>{
                try{ sessionStorage.setItem(SESS_KEY,"1"); }catch(e){} return true; },
     logout(){ try{ sessionStorage.removeItem(SESS_KEY); }catch(e){} },
 
+    get ghToken(){ try{ return localStorage.getItem(GH_KEY) || ""; }catch(e){ return ""; } },
+    setGhToken(t){ try{ t ? localStorage.setItem(GH_KEY, t) : localStorage.removeItem(GH_KEY); }catch(e){} },
+
+    /* 결과 파일을 깃허브에 바로 커밋한다. 1~2분 뒤 Pages 가 다시 배포된다.
+       토큰과 저장소 정보만 있으면 파일을 옮기거나 따로 커밋할 필요가 없다. */
+    async publish(obj){
+      const g = CONFIG.github;
+      if(!g || !g.owner || !g.repo) throw new Error("config.js 의 github 저장소 정보가 비어 있다");
+      const tok = this.ghToken;
+      if(!tok) throw new Error("깃허브 토큰을 먼저 입력한다");
+      const api = `https://api.github.com/repos/${g.owner}/${g.repo}/contents/${g.path}`;
+      const headers = {Authorization:`Bearer ${tok}`, Accept:"application/vnd.github+json"};
+      let sha;
+      const cur = await fetch(`${api}?ref=${encodeURIComponent(g.branch)}`, {headers, cache:"no-store"});
+      if(cur.status === 200){ sha = (await cur.json()).sha; }        // 기존 파일이 있으면 덮어쓰기용 sha
+      else if(cur.status === 401) throw new Error("토큰이 올바르지 않다 (401)");
+      else if(cur.status === 403) throw new Error("이 저장소에 쓸 권한이 없는 토큰이다 (403)");
+      else if(cur.status !== 404) throw new Error(`깃허브 조회 실패 (${cur.status})`);
+      const body = {message:`배정 결과 공개 v${obj.version}`,
+                    content: toB64Utf8(JSON.stringify(obj, null, 1)), branch: g.branch};
+      if(sha) body.sha = sha;
+      const put = await fetch(api, {method:"PUT", headers, body: JSON.stringify(body)});
+      if(!put.ok){
+        let m = String(put.status);
+        try{ const e = await put.json(); if(e && e.message) m += " · " + e.message; }catch(_){}
+        throw new Error(`깃허브 업로드 실패 (${m})`);
+      }
+      published = obj;   // 방금 올린 것을 현재 공개본으로 둔다
+      return true;
+    },
+
     async init(){
       published = await fetchPublished();
       loadSurvey();
@@ -50,8 +90,7 @@ const Store = (()=>{
       survey.people = people; survey.raw = raw; survey.map = map; survey.updatedAt = now();
       saveSurvey();
     },
-    setLocked(list){ survey.locked = list; saveSurvey(); },
-    clearSurvey(){ survey = {people:[], raw:"", map:null, locked:[], updatedAt:""};
+    clearSurvey(){ survey = {people:[], raw:"", map:null, updatedAt:""};
                    try{ localStorage.removeItem(SURVEY_KEY); }catch(e){} },
 
     /* 공개용 결과 파일을 만든다. 기피와 원본 응답은 넣지 않는다. */

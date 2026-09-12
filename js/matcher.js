@@ -198,7 +198,7 @@ function localSearch(n, cost, banned, rankOf, objective, starts){
 }
 
 /* ── 지표 ──────────────────────────────────────────────────
-   최종 방(잠금 쌍 포함)을 원래 학번 인덱스 기준 선호표로 훑는다.
+   최종 방을 원래 학번 인덱스 기준 선호표로 훑는다.
    2인실만 있으므로 룸메는 한 명이다. 인원이 홀수라 혼자 쓰는 방이 생기면
    그 학생은 룸메가 없어 지표 계산에서 뺀다.                              */
 const HARD = 0.18, VERY_HARD = 0.30;   // 개인 생활차이가 이보다 크면 꽤 / 많이 안 맞는다고 본다
@@ -253,18 +253,10 @@ const WORST_W = 1.5;
 function solve(people, opts){
   opts = opts || {};
   const rnd = opts.rnd || Math.random;
-  const locked = opts.locked || [];
   const all = people, N = all.length;
 
-  // 미리 정해 둔 쌍과 홀수 인원을 빼고 계산한다
-  const byId = {}; all.forEach((p,i)=>byId[String(p.id)] = i);
-  const fixed = [], usedIdx = new Set();
-  for(const [x,y] of locked){
-    const i = byId[String(x).trim()], j = byId[String(y).trim()];
-    if(i==null || j==null || i===j || usedIdx.has(i) || usedIdx.has(j)) continue;
-    fixed.push([i,j]); usedIdx.add(i); usedIdx.add(j);
-  }
-  let poolIdx = [...Array(N).keys()].filter(i=>!usedIdx.has(i));
+  // 2인실만 있으므로 짝수만 짝짓고, 홀수면 마지막 한 명만 뺀다
+  let poolIdx = [...Array(N).keys()];
   let leftover = -1;
   if(poolIdx.length % 2 === 1){ leftover = poolIdx[poolIdx.length-1]; poolIdx = poolIdx.slice(0,-1); }
 
@@ -286,7 +278,7 @@ function solve(people, opts){
                             m => totalCost(m) + WORST_W * n * worstCost(m), starts);
   if(!match) return {ok:false, reason:"조건을 모두 지키는 배정을 찾지 못했다"};
 
-  // 전체 학생을 원래 번호 그대로 담은 선호표. 잠금 쌍까지 포함해
+  // 전체 학생을 원래 번호 그대로 담은 선호표.
   // 근거와 지표를 낼 때 이 표 하나만 본다. (계산용 P 는 풀 인덱스라 섞이면 안 된다)
   const Pall = buildPreferences(all);
 
@@ -297,19 +289,18 @@ function solve(people, opts){
     done[i] = done[match[i]] = 1;
     rooms.push([poolIdx[i], poolIdx[match[i]]]);
   }
-  fixed.forEach(f=>rooms.unshift(f.slice()));
   // 2인실만 있으므로 3인실을 만들지 않는다. 인원이 홀수여서 남는 한 명은
-  // 혼자 쓰는 방으로 두고, 관리자가 인원을 맞추거나 미리 정해 둘 방으로 조정한다.
+  // 혼자 쓰는 방으로 두고, 관리자가 응답 인원을 짝수로 맞춰 다시 배정한다.
   if(leftover >= 0) rooms.push([leftover]);
 
-  // 최종 방 기준 지표(잠금 쌍 포함, 혼자 쓰는 방은 룸메가 없어 제외).
+  // 최종 방 기준 지표(혼자 쓰는 방은 룸메가 없어 제외).
   // 차단 쌍만 2인 안정성 지표라 따로 센다.
   const stats = roomStats(rooms, Pall);
   stats.blocking = blockingPairs(match, P.rankOf).length;
 
   return {ok:true, rooms, P: Pall, all, poolIdx, match,
           stableExists: irv.ok, stableNote: irv.ok ? "" : irv.reason,
-          fixedCount: fixed.length, hasLeftover: leftover >= 0, stats};
+          hasLeftover: leftover >= 0, stats};
 }
 
 /* 받침 유무에 따라 조사를 고른다 */
